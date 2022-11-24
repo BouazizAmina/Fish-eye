@@ -1,176 +1,154 @@
-var svg = d3.select("svg"),
-    width = +svg.attr("width"),
-    height = +svg.attr("height");
+var width = 960,
+  height = 600;
 
-var color = d3.scaleOrdinal(d3.schemeCategory20);
+var color = d3.scale.category20();
 
-var simulation = d3.forceSimulation()
-    .force("link", d3.forceLink().id(function(d) { return d.id; }))
-    .force("charge", d3.forceManyBody())
-    .force("center", d3.forceCenter(width / 2, height / 2));
+var fisheye = d3.fisheye.circular()
+  .radius(100)
+  .distortion(5);
 
-d3.json("./ressource/data.json", function(error, graph) {
-  if (error) throw error;
+var force = d3.layout.force()
+  .charge(-440)
+  .linkDistance(60)
+  .size([width, height]);
 
-  var link = svg.append("g")
-      .attr("class", "links")
-    .selectAll("line")
-    .data(graph.links)
+var svg = d3.select("#chart1").append("svg")
+  .attr("width", width)
+  .attr("height", height);
+
+// magnifier as circle
+var lens = svg.append("circle")
+  .attr("class","lens")
+  .attr("r", fisheye.radius());;
+
+// magnifier as path
+var mag = svg.append("path")
+  .attr("class", "mag");
+
+// specify angle where magnifier handle should "attach" to body
+var omega = 0.78;
+
+// magnifier handle as path
+var mag2 = svg.append("path")
+  .attr("class", "mag2");
+
+/*
+svg.append("rect")
+  .attr("class", "background")
+  .attr("width", width)
+  .attr("height", height);
+*/
+
+d3.json("./ressource/data.json", function(data) {
+  var n = data.nodes.length;
+
+  force.nodes(data.nodes).links(data.links);
+
+  // Initialize the positions deterministically, for better results.
+  data.nodes.forEach(function(d, i) { d.x = d.y = width / n * i; });
+
+  // Run the layout a fixed number of times.
+  // The ideal number of times scales with graph complexity.
+  // Of course, don't run too long—you'll hang the page!
+  force.start();
+  for (var i = n; i > 0; --i) force.tick();
+  force.stop();
+
+  // Center the nodes in the middle.
+  var ox = 0, oy = 0;
+  data.nodes.forEach(function(d) { ox += d.x, oy += d.y; });
+  ox = ox / n - width / 2, oy = oy / n - height / 2;
+  data.nodes.forEach(function(d) { d.x -= ox, d.y -= oy; });
+
+  var link = svg.selectAll(".link")
+    .data(data.links)
     .enter().append("line")
-      .attr("stroke-width", function(d) { return Math.sqrt(d.weight); });
+    .attr("class", "link")
+    .attr("x1", function(d) { return d.source.x; })
+    .attr("y1", function(d) { return d.source.y; })
+    .attr("x2", function(d) { return d.target.x; })
+    .attr("y2", function(d) { return d.target.y; })
+    .style("stroke-width", function(d) { return Math.sqrt(d.weight); });
 
-  var node = svg.append("g")
-      .attr("class", "nodes")
-    .selectAll("g")
-    .data(graph.nodes)
+  var node = svg.selectAll(".node")
+    .data(data.nodes)
     .enter().append("g")
+    .attr("class", "node");
 
-  var circles = node.append("circle")
-    .attr("r", function(d) { return d.value3*10; })
-    .attr("fill", function(d) { return color(d.id); })
-    .attr("cx", function(d) { return d.value1; })
-    .attr("cy", function(d) { return d.value2; });
+  render("path");
 
-  // Create a drag handler and append it to the node object instead
-  var drag_handler = d3.drag()
-      .on("start", dragstarted)
-      .on("drag", dragged)
-      .on("end", dragended);
+  function render(shape) {
+    node.selectAll(".link").remove();
+    node.selectAll(".circle").remove();
+    node.selectAll(".text").remove();
 
-  drag_handler(node);
-  
-  var lables = node.append("text")
-      .text(function(d) {
-        return d.label;
-      })
-      .attr('x', 6)
-      .attr('y', 3);
+    lens.style("stroke-opacity", shape == "circle" ? 1 : 0);
+    mag.style("stroke-opacity", shape == "path" ? 1 : 0);
+    mag2.style("stroke-opacity", shape == "path" ? 1 : 0);
 
-  node.append("title")
-      .text(function(d) { return d.id; });
+    var nodeEnter = node
+      .append("circle")
+      .attr("class", "circle")
+      .attr("cx", function(d) { return d.x; })
+      .attr("cy", function(d) { return d.y; })
+      .attr("r", 6)
+      .style("fill", function(d) { return color(d.id); })
+      .call(force.drag);
 
-  simulation
-      .nodes(graph.nodes)
-      .on("tick", ticked);
+    var text = node.append("text")
+      .attr("class", "text")
+      .attr("dy", function(d) { return d.y; })
+      .attr("dx", function(d) { return d.x; })
+      .text(function(d) { return d.label; });
 
-  simulation.force("link")
-      .links(graph.links);
+    node.append("title")
+      .text(function(d) { return d.label; });
 
-  function ticked() {
-    link
-        .attr("x1", function(d) { return d.source.x; })
-        .attr("y1", function(d) { return d.source.y; })
-        .attr("x2", function(d) { return d.target.x; })
-        .attr("y2", function(d) { return d.target.y; });
+    svg.on("mousemove", function() {
+      fisheye.focus(d3.mouse(this));
 
-    node
-        .attr("transform", function(d) {
-          return "translate(" + d.x + "," + d.y + ")";
-        })
+      var mouseX = d3.mouse(this)[0];
+      var mouseY = d3.mouse(this)[1];
+      var r = fisheye.radius();
+
+      if (shape == "circle") {
+        // display magnifier as circle
+        lens
+          .attr("cx", mouseX)
+          .attr("cy", mouseY);
+      }
+      else {
+        // path for magnifier
+        var magPath = "M " + mouseX + "," + mouseY + " m -" + r + ", 0 a " + r + "," + r + " 0 1,0 " + (r * 2) + ",0 a " + r + "," + r + " 0 1,0 -" + (r * 2) + ",0";
+
+        // point in circumference to attach magnifier handle
+        var x1 = mouseX + r * Math.sin(omega);
+        var y1 = mouseY + r * Math.cos(omega);
+
+        // path for magnifier's handle
+        var mag2Path = "M " + (x1 + 2) + "," + (y1 + 2) + " L" + (mouseX + r * 1.7) + "," + (mouseY + r * 1.7);
+
+        // display magnifier as path
+        mag.attr("d", magPath);
+
+        // display magnifier handle as path
+        mag2.attr("d", mag2Path);
+      };
+
+      nodeEnter.each(function(d) { d.fisheye = fisheye(d); })
+        .attr("cx", function(d) { return d.fisheye.x; })
+        .attr("cy", function(d) { return d.fisheye.y; })
+        .attr("r", function(d) { return d.fisheye.z * 4.5; });
+
+      text.attr("dx", function(d) { return d.fisheye.x; })
+        .attr("dy", function(d) { return d.fisheye.y; });
+
+      link.attr("x1", function(d) { return d.source.fisheye.x; })
+        .attr("y1", function(d) { return d.source.fisheye.y; })
+        .attr("x2", function(d) { return d.target.fisheye.x; })
+        .attr("y2", function(d) { return d.target.fisheye.y; });
+    });
   }
-});
-
-function dragstarted(d) {
-  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
-  d.fx = d.x;
-  d.fy = d.y;
-}
-
-function dragged(d) {
-  d.fx = d3.event.x;
-  d.fy = d3.event.y;
-}
-
-function dragended(d) {
-  if (!d3.event.active) simulation.alphaTarget(0);
-  d.fx = null;
-  d.fy = null;
-}
-
-
-
-
-// var svg = d3.select("svg"),
-//     width = +svg.attr("width"),
-//     height = +svg.attr("height");
-
-// var simulation = d3.forceSimulation()
-//     .force("link", d3.forceLink().id(function(d) { return d.id; }))
-//     .force("charge", d3.forceManyBody().strength(-400))
-//     .force("center", d3.forceCenter(width / 2, height / 2));
-
-
-// d3.json("./ressource/data.json", function(error, graph) {
-//   if (error) throw error;         
-
-//   var link = svg.append("g")
-//                 .style("stroke", "#aaa")
-//                 .selectAll("line")
-//                 .data(graph.links)
-//                 .enter().append("line");
-
-//   var node = svg.append("g")
-//             .attr("class", "nodes")
-//   .selectAll("circle")
-//             .data(graph.nodes)
-//   .enter().append("circle")
-//           .attr("r", function(d) { return d.value3*10; })
-//           .call(d3.drag()
-//               .on("start", dragstarted)
-//               .on("drag", dragged)
-//               .on("end", dragended));
-  
-//   var label = svg.append("g")
-//       .attr("class", "labels")
-//       .selectAll("text")
-//       .data(graph.nodes)
-//       .enter().append("text")
-//         .attr("class", "label")
-//         .text(function(d) { return d.label; })
-//         // .style("font-size", "0.5em")
-
-//   simulation
-//       .nodes(graph.nodes)
-//       .on("tick", ticked);
-
-//   simulation.force("link")
-//       .links(graph.links);
-
-//   function ticked() {
-//     link
-//         .attr("x1", function(d) { return d.source.x; })
-//         .attr("y1", function(d) { return d.source.y; })
-//         .attr("x2", function(d) { return d.target.x; })
-//         .attr("y2", function(d) { return d.target.y; });
-
-//     node
-//          .attr("r", function(d) { return d.value3*50; })
-//          .style("fill", "#d9d9d9")
-//          .style("stroke", "#969696")
-//          .style("stroke-width", "1px")
-//          .attr("cx", function (d) { return d.x+6; })
-//          .attr("cy", function(d) { return d.y-6; });
-    
-//     label
-//     		.attr("x", function(d) { return d.x; })
-//             .attr("y", function (d) { return d.y; })
-//             .style("font-size", "10px").style("fill", "#4393c3");
-//   }
-// });
-
-// function dragstarted(d) {
-//   if (!d3.event.active) simulation.alphaTarget(0.3).restart();
-//   d.fx = d.value1;
-//   d.fy = d.value2;
-// }
-
-// function dragged(d) {
-//   d.fx = d3.event.x;
-//   d.fy = d3.event.y;
-// }
-
-// function dragended(d) {
-//   if (!d3.event.active) simulation.alphaTarget(0);
-//   d.fx = null;
-//   d.fy = null;
-// }
+  d3.select("#circle").on("click", function () { render("circle");});
+  d3.select("#path").on("click", function () { render("path");});
+})
