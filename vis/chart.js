@@ -16,45 +16,36 @@ var svg = d3.select("#chart1").append("svg")
   .attr("width", width)
   .attr("height", height);
 
-// magnifier as circle
 var lens = svg.append("circle")
   .attr("class","lens")
   .attr("r", fisheye.radius());;
 
-// magnifier as path
 var mag = svg.append("path")
   .attr("class", "mag");
 
-// specify angle where magnifier handle should "attach" to body
+
 var omega = 0.78;
 
-// magnifier handle as path
+
 var mag2 = svg.append("path")
   .attr("class", "mag2");
 
-/*
-svg.append("rect")
-  .attr("class", "background")
-  .attr("width", width)
-  .attr("height", height);
-*/
+
 
 d3.json("./ressource/data.json", function(data) {
   var n = data.nodes.length;
 
   force.nodes(data.nodes).links(data.links);
 
-  // Initialize the positions deterministically, for better results.
+  
   data.nodes.forEach(function(d, i) { d.x = d.y = width / n * i; });
 
-  // Run the layout a fixed number of times.
-  // The ideal number of times scales with graph complexity.
-  // Of course, don't run too long—you'll hang the page!
+
   force.start();
   for (var i = n; i > 0; --i) force.tick();
   force.stop();
 
-  // Center the nodes in the middle.
+
   var ox = 0, oy = 0;
   data.nodes.forEach(function(d) { ox += d.x, oy += d.y; });
   ox = ox / n - width / 2, oy = oy / n - height / 2;
@@ -91,7 +82,7 @@ d3.json("./ressource/data.json", function(data) {
       .attr("class", "circle")
       .attr("cx", function(d) { return d.x; })
       .attr("cy", function(d) { return d.y; })
-      .attr("r", 6)
+      .attr("r", function(d) { return d.value3*10; })
       .style("fill", function(d) { return color(d.id); })
       .call(force.drag);
 
@@ -112,26 +103,26 @@ d3.json("./ressource/data.json", function(data) {
       var r = fisheye.radius();
 
       if (shape == "circle") {
-        // display magnifier as circle
+      
         lens
           .attr("cx", mouseX)
           .attr("cy", mouseY);
       }
       else {
-        // path for magnifier
+       
         var magPath = "M " + mouseX + "," + mouseY + " m -" + r + ", 0 a " + r + "," + r + " 0 1,0 " + (r * 2) + ",0 a " + r + "," + r + " 0 1,0 -" + (r * 2) + ",0";
 
-        // point in circumference to attach magnifier handle
+        
         var x1 = mouseX + r * Math.sin(omega);
         var y1 = mouseY + r * Math.cos(omega);
 
-        // path for magnifier's handle
+        
         var mag2Path = "M " + (x1 + 2) + "," + (y1 + 2) + " L" + (mouseX + r * 1.7) + "," + (mouseY + r * 1.7);
 
-        // display magnifier as path
+        
         mag.attr("d", magPath);
 
-        // display magnifier handle as path
+
         mag2.attr("d", mag2Path);
       };
 
